@@ -480,6 +480,7 @@ export function useTaskLaunch({ projectId, hostId }: { projectId?: string; hostI
 	// with the fix in place. Discovery runs against this computer's login even
 	// for a cloud project, whose task runs with the cloud connection instead,
 	// so there the notice is informational and never reads as blocking.
+	const modelNotInstalled = revalidationWarning === undefined && modelCatalogQuery.data?.warningCode === "not_installed";
 	const modelAuthIssue = revalidationWarning === undefined ? modelCatalogAuthIssue(modelCatalogQuery.data) : undefined;
 	useModelCatalogAuthRecovery(selectedAgent, hostId, modelAuthIssue);
 	// Settings → Harness → Models picks the models this machine offers; cloud VMs keep their own catalog.
@@ -657,13 +658,18 @@ export function useTaskLaunch({ projectId, hostId }: { projectId?: string; hostI
 	// the cloud connection: once that is connected, this computer's login state is
 	// irrelevant to the task and the notice only confuses.
 	const cloudHarnessReady = isCloudProject && isCloudHarnessConnected(cloudConnectionsQuery.data, selectedAgent);
-	const modelWarning = modelAuthIssue && cloudHarnessReady ? undefined : modelAuthIssue ? (
+	const modelIssue = modelNotInstalled ? "not_installed" : modelAuthIssue;
+	const modelWarning = modelIssue && cloudHarnessReady ? undefined : modelIssue ? (
 		<ModelCatalogNotice
 			agentLabel={selectedAgentLabel}
-			issue={modelAuthIssue}
+			issue={modelIssue}
 			detail={modelWarningText}
 			cloud={isCloudProject}
 			onLogin={startAgentLogin}
+			onInstall={() => openGlobalSettings("harness", {
+				focusAgentId: selectedAgent, ...(hostId ? { hostId } : {}),
+				harnessView: "local", preserveProject: true,
+			})}
 			onRetry={refreshSelectedModels}
 		/>
 	) : modelWarningText;
