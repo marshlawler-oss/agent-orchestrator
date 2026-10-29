@@ -69,8 +69,15 @@ followed by a space:
    `ao.harness.update_idle_wait`, `ao.harness.version_switch` and
    `ao.harness.stale_sessions` (the last is a gauge sent at most every 10
    minutes, only for harnesses with stale sessions).
-6. Drop `$web_vitals` unless a time-boxed performance investigation needs it.
-7. Apply the same routine-command drop as a defensive backstop to
+6. Keep the delivery events `ao.session.ended`, `ao.pr.opened`,
+   `ao.pr.merged` and `ao.pr.closed_unmerged` (at most one per session end or
+   PR transition). `ao.session.user_message_sent` is the one per-message
+   event: one per message a person sends, expected at a few times the
+   `ao.session.spawned` volume. If it becomes a cost problem, sample or drop it
+   for `surface = 'cli'` before touching desktop and mobile, which carry the
+   returning-user signal.
+7. Drop `$web_vitals` unless a time-boxed performance investigation needs it.
+8. Apply the same routine-command drop as a defensive backstop to
    `ao.v2.cli.invoked` and CLI-channel `ao.v2.app.active`, even though current
    clients should suppress those routine events before transmission.
 

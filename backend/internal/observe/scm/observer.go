@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aoagents/agent-orchestrator/backend/internal/deliverytelemetry"
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/observe"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
@@ -177,6 +178,9 @@ type Config struct {
 	// BranchStates refreshes sessions' local commit and push facts on this
 	// tick. Nil skips it.
 	BranchStates BranchStateReconciler
+	// Delivery reports PRs newly attributed to a session and PRs that merged or
+	// closed outside AO. Nil reports nothing.
+	Delivery *deliverytelemetry.Recorder
 }
 
 // BranchStateReconciler reads every live session's branch facts from git.
@@ -274,12 +278,13 @@ type Observer struct {
 	trigger chan struct{}
 	// lifecycleTimeout bounds each lifecycle notification.
 	lifecycleTimeout time.Duration
+	delivery         *deliverytelemetry.Recorder
 }
 
 // New constructs an Observer with default cadence/cache settings for zero
 // values in cfg.
 func New(provider Provider, store Store, lifecycle Lifecycle, cfg Config) *Observer {
-	o := &Observer{provider: provider, store: store, lifecycle: lifecycle, tick: cfg.Tick, reviewInterval: cfg.ReviewInterval, clock: cfg.Clock, logger: cfg.Logger, scopedIdentityResolver: cfg.ScopedIdentityResolver, Cache: newCache(cfg.CacheMax), rateLimitUntil: map[string]time.Time{}, branchStates: cfg.BranchStates, lifecycleTimeout: DefaultLifecycleTimeout, forcedReviews: map[string]bool{}, trigger: make(chan struct{}, 1)}
+	o := &Observer{provider: provider, store: store, lifecycle: lifecycle, tick: cfg.Tick, reviewInterval: cfg.ReviewInterval, clock: cfg.Clock, logger: cfg.Logger, scopedIdentityResolver: cfg.ScopedIdentityResolver, Cache: newCache(cfg.CacheMax), rateLimitUntil: map[string]time.Time{}, branchStates: cfg.BranchStates, delivery: cfg.Delivery, lifecycleTimeout: DefaultLifecycleTimeout, forcedReviews: map[string]bool{}, trigger: make(chan struct{}, 1)}
 	if o.tick <= 0 {
 		o.tick = DefaultTickInterval
 	}
@@ -675,10 +680,25 @@ func (o *Observer) Poll(ctx context.Context) (pollErr error) {
 			}
 			pr, checks, reviews, threads, comments = domainFromObservation(subj.session.ID, subj.session, prepared, local, pendingOpts, now)
 		}
+		var mergeClaim *deliverytelemetry.FirstClaim
+		if pr.Merged && !local.Merged {
+			mergeClaim = o.delivery.BeginPRMerged(ctx)
+		}
 		if err := o.store.WriteSCMObservation(ctx, pr, checks, reviews, threads, comments, reviewMode); err != nil {
+			mergeClaim.Abandon()
 			o.logger.Error("scm observer: DB write failed", "session", subj.session.ID, "pr", pr.URL, "err", err)
 			markRepoRefreshFailed(subj.repo)
 			continue
+		}
+		// The stored row is the transition's durable baseline: once merged or
+		// closed is written, a retried lifecycle pass reads it back as local
+		// and reports nothing twice. A merge AO performed is written before the
+		// observer sees it, so only merges made elsewhere arrive here.
+		switch {
+		case pr.Merged && !local.Merged:
+			o.delivery.PRMerged(ctx, pr, deliverytelemetry.MergedOutsideAO(pr), mergeClaim)
+		case pr.Closed && !pr.Merged && !local.Closed && !local.Merged:
+			o.delivery.PRClosedUnmerged(ctx, pr)
 		}
 		if o.lifecycle != nil {
 			// A merged or closed PR is not selected again after a failed
@@ -1247,13 +1267,16 @@ func (o *Observer) discoverNewPRs(ctx context.Context, sessionRepos []sessionRep
 			// reads every PR of the session from the store. Without this write, an
 			// open sibling/child discovered in the same poll would not yet be
 			// durable, and the session could terminate while that PR is still open.
+			openClaim := o.delivery.BeginPROpened(ctx)
 			if err := o.store.WriteSCMObservation(ctx, known, nil, nil, nil, nil, ports.ReviewWritePreserve); err != nil {
+				openClaim.Abandon()
 				o.logger.Error("scm observer: persist discovered PR failed", "session", sr.session.ID, "pr", known.URL, "err", err)
 				if markRepoFailed != nil {
 					markRepoFailed(repo)
 				}
 				continue
 			}
+			o.delivery.PROpened(ctx, known, deliverytelemetry.AttributionDiscovered, openClaim)
 			subjects[keyForTrackedPR(known, repo)] = &subject{
 				session: sr.session,
 				repo:    repo,

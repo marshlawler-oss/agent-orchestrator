@@ -222,11 +222,60 @@ var remotePayloadAllowlist = map[string]map[string]struct{}{
 		"step":        {},
 	},
 	"ao.session.spawned": {
+		"created_by":        {},
 		"duration_ms":       {},
 		"first_for_install": {},
 		"harness":           {},
 		"kind":              {},
 		"github_actor":      {},
+		"surface":           {},
+	},
+	// A person sent a message or steer to a session (desktop chat, mobile, or
+	// `ao send` outside an AO session). Never the message itself.
+	"ao.session.user_message_sent": {
+		"harness":  {},
+		"is_steer": {},
+		"kind":     {},
+		"surface":  {},
+	},
+	// Whether a session delivered: outcome is pr_opened, completed, killed,
+	// failed or abandoned (internal/deliverytelemetry).
+	"ao.session.ended": {
+		"created_by":          {},
+		"duration_s":          {},
+		"had_pr":              {},
+		"harness":             {},
+		"kind":                {},
+		"outcome":             {},
+		"waiting_input_count": {},
+	},
+	"ao.pr.opened": {
+		"attribution":       {},
+		"first_for_install": {},
+		"harness":           {},
+		"ms_since_spawn":    {},
+		"scm_provider":      {},
+		"session_kind":      {},
+	},
+	"ao.pr.merged": {
+		"ao_review_used":    {},
+		"first_for_install": {},
+		"harness":           {},
+		"merged_via":        {},
+		"ms_since_open":     {},
+		"ms_since_spawn":    {},
+		"review_rounds":     {},
+		"scm_provider":      {},
+		"session_kind":      {},
+	},
+	"ao.pr.closed_unmerged": {
+		"ao_review_used": {},
+		"harness":        {},
+		"ms_since_open":  {},
+		"ms_since_spawn": {},
+		"review_rounds":  {},
+		"scm_provider":   {},
+		"session_kind":   {},
 	},
 	"ao.session.waiting_input_entered": {
 		"state": {},
@@ -273,6 +322,10 @@ type PostHogSink struct {
 	// source, release channel) stamped on every event. See environment.go.
 	env     staticEnvironment
 	install *installContext
+	// experimentCohort is this install's fixed 0-99 bucket (cohort.go). Unset
+	// when it could not be read or assigned, which omits the property.
+	experimentCohort    int
+	hasExperimentCohort bool
 	// ident carries the opt-out switch and the signed-in user attributes. Nil
 	// (zero-value sinks in tests) behaves as anonymous and opted in.
 	ident *Identity
@@ -331,6 +384,7 @@ func NewPostHogSink(dataDir, apiKey, host, appVersion, defaultAgent string, clie
 		ctx:          ctx,
 		cancel:       cancel,
 	}
+	s.experimentCohort, s.hasExperimentCohort = loadOrAssignExperimentCohort(dataDir)
 	s.wg.Add(1)
 	go s.loop()
 	return s, nil
@@ -564,6 +618,9 @@ func (s *PostHogSink) properties(ev ports.TelemetryEvent) map[string]any {
 		s.env.stamp(props)
 	}
 	s.install.stamp(props)
+	if s.hasExperimentCohort {
+		props["experiment_cohort"] = s.experimentCohort
+	}
 	if ev.RequestID != "" {
 		props["request_id"] = ev.RequestID
 	}

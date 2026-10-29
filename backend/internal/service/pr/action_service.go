@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aoagents/agent-orchestrator/backend/internal/deliverytelemetry"
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
+	"github.com/aoagents/agent-orchestrator/backend/internal/telemetrymeta"
 )
 
 var (
@@ -61,6 +63,9 @@ type ActionDeps struct {
 	Lifecycle    actionLifecycle
 	Clock        func() time.Time
 	Logger       *slog.Logger
+	// Delivery reports ao.pr.merged for merges AO performs, with the client
+	// that asked. Nil reports nothing.
+	Delivery *deliverytelemetry.Recorder
 	// ThreadWriter updates one resolved thread and its comments without
 	// replacing a potentially newer SCM observation.
 	ThreadWriter interface {
@@ -77,6 +82,7 @@ type ActionService struct {
 	resolver     ports.SCMReviewResolver
 	mergeWriter  mergeStateWriter
 	lifecycle    actionLifecycle
+	delivery     *deliverytelemetry.Recorder
 	clock        func() time.Time
 	logger       *slog.Logger
 	threadWriter interface {
@@ -114,6 +120,7 @@ func NewActionService(deps ActionDeps) *ActionService {
 		resolver:     deps.Resolver,
 		mergeWriter:  deps.MergeWriter,
 		lifecycle:    deps.Lifecycle,
+		delivery:     deps.Delivery,
 		clock:        clock,
 		logger:       logger,
 		threadWriter: threadWriter,
@@ -183,7 +190,9 @@ func (s *ActionService) Merge(ctx context.Context, request MergeRequest) (MergeR
 	}
 	mergedAt := s.clock().UTC()
 	persisted := false
+	var mergeClaim *deliverytelemetry.FirstClaim
 	if s.mergeWriter != nil {
+		mergeClaim = s.delivery.BeginPRMerged(ctx)
 		if err := s.mergeWriter.MarkPRMerged(ctx, tracked.URL, out.MergeCommitSHA, mergedAt); err != nil {
 			// GitHub has already committed the irreversible remote mutation. Keep
 			// returning the authoritative success so callers do not retry a merge
@@ -192,6 +201,15 @@ func (s *ActionService) Merge(ctx context.Context, request MergeRequest) (MergeR
 		} else {
 			persisted = true
 		}
+	}
+	// Reported only once the merged row is durable: the observer then reads it
+	// as already merged and does not report the same merge as made elsewhere.
+	if persisted {
+		merged := tracked
+		merged.Merged, merged.Closed, merged.Draft = true, false, false
+		s.delivery.PRMerged(ctx, merged, deliverytelemetry.MergedViaSurface(telemetrymeta.SurfaceFromContext(ctx)), mergeClaim)
+	} else {
+		mergeClaim.Abandon()
 	}
 	if persisted && s.lifecycle != nil {
 		fresh.PR.Draft = false

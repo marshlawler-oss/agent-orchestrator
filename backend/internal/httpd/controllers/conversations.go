@@ -93,6 +93,9 @@ type turnAutoResumeService interface {
 // even by calling these URLs directly. UI visibility is not the boundary.
 type ConversationsController struct {
 	Svc ConversationService
+	// UserMessages reports accepted human sends for product telemetry. Nil
+	// reports nothing.
+	UserMessages UserMessageRecorder
 	// Renders serves agent HTML renders. Nil answers the render route 501.
 	Renders *attachmentstore.Store
 	// Search serves chat search. Nil answers the search route 501.
@@ -955,6 +958,10 @@ func (c *ConversationsController) send(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeConversationError(w, r, err)
 		return
+	}
+	// An empty turn is a replay of an already delivered client message id.
+	if turn.ID != "" {
+		recordUserMessage(r.Context(), c.UserMessages, domain.SessionID(chi.URLParam(r, "sessionId")), "", false)
 	}
 	envelope.WriteJSON(w, http.StatusAccepted, sendConversationMessageResponse(turn))
 }

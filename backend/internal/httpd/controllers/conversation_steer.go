@@ -62,6 +62,9 @@ func (c *ConversationsController) steerOrSend(w http.ResponseWriter, r *http.Req
 		writeSteerError(w, r, err)
 		return
 	}
+	if !req.RecoverOnly && !result.Duplicate {
+		recordUserMessage(r.Context(), c.UserMessages, domain.SessionID(chi.URLParam(r, "sessionId")), req.SenderSessionID, result.Steered)
+	}
 	response := SteerOrSendConversationResponse{Duplicate: result.Duplicate}
 	if result.Steered {
 		response.Outcome = "steered"
@@ -128,6 +131,7 @@ func (c *ConversationsController) steer(w http.ResponseWriter, r *http.Request) 
 		writeSteerError(w, r, err)
 		return
 	}
+	recordUserMessage(r.Context(), c.UserMessages, domain.SessionID(chi.URLParam(r, "sessionId")), req.SenderSessionID, true)
 	envelope.WriteJSON(w, http.StatusAccepted, SteerConversationResponse{
 		ProviderTurnID: result.ProviderTurnID,
 		ActivityID:     result.ActivityID,

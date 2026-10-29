@@ -857,6 +857,7 @@ func Run(buildVersion string) error {
 			MergeWriter:  store,
 			ThreadWriter: store,
 			Lifecycle:    lcStack.LCM,
+			Delivery:     lcStack.LCM.DeliveryTelemetry(),
 			Logger:       log,
 		})
 	} else {

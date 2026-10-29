@@ -812,6 +812,12 @@ type SessionInterfaceTransitionMessage struct {
 	AuthoredByUser  bool
 }
 
+type SessionTelemetry struct {
+	SessionID         string
+	CreatedBy         string
+	WaitingInputCount int64
+}
+
 type SessionTerminalTurn struct {
 	ID              int64
 	SessionID       string

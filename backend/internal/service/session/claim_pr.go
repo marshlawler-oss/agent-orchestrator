@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aoagents/agent-orchestrator/backend/internal/deliverytelemetry"
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 	"github.com/aoagents/agent-orchestrator/backend/internal/httpd/apierr"
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
@@ -130,12 +131,25 @@ func (s *Service) ClaimPR(ctx context.Context, id domain.SessionID, ref string, 
 	}
 	now := s.clock().UTC()
 	pr, checks, reviews, threads, comments := claimRowsFromSCM(id, obs, reviewMode, now, rec)
+	alreadyOwned := s.sessionOwnsPR(ctx, id, pr.URL)
+	var openClaim *deliverytelemetry.FirstClaim
+	if !alreadyOwned {
+		openClaim = s.delivery.BeginPROpened(ctx)
+	}
 	outcome, err := s.prClaimer.ClaimPR(ctx, pr, checks, reviews, threads, comments, reviewMode, opts.AllowTakeover)
 	if err != nil {
+		openClaim.Abandon()
 		s.recordClaimed(ctx, id, pr, actionStatusForError(err), err)
 		return ClaimPRResult{}, err
 	}
 	s.recordClaimed(ctx, id, pr, domain.ActivityStatusCompleted, nil)
+	// A PR new to AO is attributed here; a takeover moves an already-counted
+	// PR between sessions and a re-claim changes nothing.
+	if outcome.PreviousOwner == "" && !alreadyOwned {
+		s.delivery.PROpened(ctx, pr, deliverytelemetry.AttributionClaimed, openClaim)
+	} else {
+		openClaim.Abandon()
+	}
 	// Reconcile immediately rather than waiting for the artifact-output
 	// poller's next tick: a session that already produced artifacts must move
 	// to pr OutputType (and out of the artifact Kanban placement) with the
@@ -519,4 +533,22 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// sessionOwnsPR reports whether the session already tracks prURL. A lookup
+// failure reads as owned, so telemetry errs towards not counting a new PR.
+func (s *Service) sessionOwnsPR(ctx context.Context, id domain.SessionID, prURL string) bool {
+	if s.delivery == nil {
+		return true
+	}
+	prs, err := s.store.ListPRsBySession(ctx, id)
+	if err != nil {
+		return true
+	}
+	for _, pr := range prs {
+		if pr.URL == prURL {
+			return true
+		}
+	}
+	return false
 }

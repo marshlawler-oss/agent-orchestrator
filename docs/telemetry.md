@@ -104,6 +104,16 @@ Orchestrator.inc sends structured events in a few broad categories:
   `ao.onboarding.first_project_added` events are deprecated: they fire again
   whenever the session or project list is empty, and are kept only so
   existing dashboards continue
+- A fixed experiment bucket, `experiment_cohort` (a whole number from 0 to
+  99), on every desktop and daemon event. It is picked at random on the first
+  run that reaches it and stored in `~/.ao/data/telemetry_experiment_cohort`,
+  so onboarding experiments can compare bucket ranges without feature flags.
+  It is random and says nothing about you
+- Whether sessions get used and deliver: when you send a message to a session,
+  who started a session, how a session ended, and when a session's pull
+  request is opened, merged, or closed. These events carry only categories,
+  counts, and durations, never message text, titles, branch names, or URLs.
+  See "Sessions and pull requests" below
 - The Orchestrator.inc version on every daemon event
 - A random `install_id` on every desktop and daemon event, the phone's own
   stored `install_id` when available, and a `paired_install_id` on phone events
@@ -132,6 +142,42 @@ group events for the same project or session without sending those identifiers
 in plain text. These identifiers are distinct from the explicit GitHub account
 attribution on session-start events, but events that share an installation
 identifier can still be associated with that attribution in PostHog.
+
+## Sessions and pull requests
+
+These daemon events show whether people keep working with their sessions and
+whether workers produce something. None of them carry message content.
+
+| Event | When it is sent | Properties |
+| --- | --- | --- |
+| `ao.session.user_message_sent` | You send a message or steer to a session from the desktop app, the mobile app, or `ao send` outside an AO session. Messages that one AO session sends another, and feedback AO delivers itself, are not counted | `kind` (`orchestrator` or `worker`), `harness`, `surface`, `is_steer` |
+| `ao.session.spawned` | A session starts (existing event) | adds `created_by` and, for sessions a request started, `surface` |
+| `ao.session.ended` | A session is killed, torn down after its pull requests merged or its issue closed, or its runtime dies | `kind`, `harness`, `outcome`, `duration_s`, `had_pr`, `waiting_input_count`, `created_by` |
+| `ao.pr.opened` | A pull request is newly attributed to a session, found on the session's branch or claimed with `ao session claim-pr` | `harness`, `session_kind`, `scm_provider`, `ms_since_spawn`, `attribution` (`discovered` or `claimed`), `first_for_install` |
+| `ao.pr.merged` | A session's pull request merges | `harness`, `session_kind`, `scm_provider`, `ms_since_spawn`, `ms_since_open`, `review_rounds`, `ao_review_used`, `merged_via`, `first_for_install` |
+| `ao.pr.closed_unmerged` | A session's pull request is closed without merging | `harness`, `session_kind`, `scm_provider`, `ms_since_spawn`, `ms_since_open`, `review_rounds`, `ao_review_used` |
+
+- `surface` is `desktop`, `mobile`, or `cli`, worked out by the daemon from how
+  the request arrived. `cli` covers any local client without a browser origin.
+- `created_by` is `user`, `orchestrator` (an orchestrator ran `ao spawn`),
+  `scheduled` (an automation's schedule), or `automation` (issue intake, or a
+  worker session starting another session). It is stored in the local
+  database next to the session. Sessions created before this was recorded
+  report no `created_by`.
+- `outcome` is `pr_opened` (the session has a pull request), `completed` (a
+  done report or a closed issue without a pull request), `killed` (stopped
+  while the agent was working), `abandoned` (stopped while it was idle or
+  waiting on you, with nothing delivered), or `failed` (its runtime died).
+- `waiting_input_count` is how many times the session stopped to wait for
+  you.
+- `review_rounds` counts the reviews recorded on the pull request, and
+  `ao_review_used` says whether an AO review ran on it.
+- `merged_via` is `desktop` or `mobile_swipe` when you merged in
+  Orchestrator.inc, `github` when the merge happened on GitHub, and `other`
+  otherwise (for example the CLI or GitLab).
+- `first_for_install` on `ao.pr.opened` and `ao.pr.merged` is true only for
+  the installation's first, recorded by `telemetry_first_pr_opened` and
+  `telemetry_first_pr_merged` under `~/.ao/data`.
 
 ## Automation usage and creation
 
