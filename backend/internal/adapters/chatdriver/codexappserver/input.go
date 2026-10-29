@@ -18,10 +18,17 @@ import (
 var _ ports.ChatInputResponder = (*conversation)(nil)
 
 type parkedInput struct {
-	params   codexproto.ToolRequestUserInputParams
+	params   userInputParams
 	custom   map[string]string
 	result   chan inputResult
 	resolved bool
+}
+
+// Newer app servers send isBlocking in addition to the generated protocol
+// snapshot. Keep the extension typed so unknown question semantics still fail.
+type userInputParams struct {
+	codexproto.ToolRequestUserInputParams
+	IsBlocking *bool `json:"isBlocking,omitempty"`
 }
 
 type inputResult struct {
@@ -38,7 +45,7 @@ type userInputReply struct {
 }
 
 func parseUserInput(raw json.RawMessage) (*parkedInput, ports.ChatInputRequest, error) {
-	var params codexproto.ToolRequestUserInputParams
+	var params userInputParams
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&params); err != nil {
@@ -46,6 +53,9 @@ func parseUserInput(raw json.RawMessage) (*parkedInput, ports.ChatInputRequest, 
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, ports.ChatInputRequest{}, errors.New("malformed request_user_input payload")
+	}
+	if params.IsBlocking != nil && !*params.IsBlocking {
+		return nil, ports.ChatInputRequest{}, errors.New("nonblocking request_user_input is unsupported")
 	}
 	if params.ThreadID == "" || params.TurnID == "" || params.ItemID == "" || len(params.Questions) == 0 {
 		return nil, ports.ChatInputRequest{}, errors.New("request_user_input requires thread, turn, item and questions")
@@ -134,7 +144,7 @@ func (c *conversation) requestUserInput(ctx context.Context, req serverRequest) 
 		ActivityStatus: domain.ActivityStatusPending, Summary: input.Message, Input: &input,
 	})
 	wait := approvalWait
-	if ms := parked.params.AutoResolutionMs; ms != nil {
+	if ms := parked.params.AutoResolutionMs; ms != nil && parked.params.IsBlocking == nil {
 		milliseconds := *ms
 		if milliseconds < uint64(approvalWait/time.Millisecond) {
 			wait = time.Duration(milliseconds) * time.Millisecond
