@@ -9,7 +9,7 @@ import MakerNSIS from "./makers/maker-nsis";
 import MakerDMG, { isSigningConfigured, sealDmg, verifyDmg, verifyMacArtifact } from "./makers/maker-dmg";
 import { machoHasX86_64Slice } from "./makers/macho-archs";
 import MakerAppImage from "./makers/maker-appimage";
-import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -148,7 +148,15 @@ const config: ForgeConfig = {
 				"-replace", "CFBundleDisplayName", "-string", "Agent Orchestrator",
 				path.join(buildPath, "Agent Orchestrator.app", "Contents", "Info.plist"),
 			], { encoding: "utf8" });
-			callback(result.error ?? (result.status !== 0 ? new Error(`Setting macOS display name failed: ${result.stderr}`) : undefined));
+			if (result.error) return callback(result.error);
+			if (result.status !== 0) return callback(new Error(`Setting macOS display name failed: ${result.stderr}`));
+			const resources = path.join(buildPath, "Agent Orchestrator.app", "Contents", "Resources");
+			const label = readFileSync(path.join(resources, "en.lproj", "InfoPlist.strings"));
+			// Finder can select any of Electron's existing regional localizations.
+			for (const locale of readdirSync(resources).filter((entry) => entry.endsWith(".lproj"))) {
+				writeFileSync(path.join(resources, locale, "InfoPlist.strings"), label);
+			}
+			callback();
 		}],
 		// Notarization. Two paths:
 		//  - CI: an App Store Connect API key. APPLE_API_KEY is a PATH to the .p8

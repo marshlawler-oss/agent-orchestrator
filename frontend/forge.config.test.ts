@@ -44,6 +44,22 @@ describe("desktop display name", () => {
 		expect(readFileSync(join(process.cwd(), "assets/mac/en.lproj/InfoPlist.strings"), "utf8"))
 			.toContain('CFBundleDisplayName = "Orchestrator";');
 	});
+
+	it.runIf(process.platform === "darwin")("labels every bundled macOS language, including regional English", async () => {
+		const resources = join(fixtureDir, "Agent Orchestrator.app", "Contents", "Resources");
+		const label = readFileSync(join(process.cwd(), "assets/mac/en.lproj/InfoPlist.strings"));
+		for (const locale of ["en", "en_GB", "ja"]) mkdirSync(join(resources, `${locale}.lproj`), { recursive: true });
+		writeFileSync(join(resources, "en.lproj", "InfoPlist.strings"), label);
+		const plist = join(resources, "..", "Info.plist");
+		writeFileSync(plist, '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleDisplayName</key><string>agent-orchestrator</string></dict></plist>');
+		const hook = config.packagerConfig?.afterCopyExtraResources?.[0];
+		if (!hook) throw new Error("display name hook missing");
+		await new Promise<void>((resolve, reject) => hook(fixtureDir, "44.7.0", "darwin", "arm64", (error) => error ? reject(error) : resolve()));
+		expect(readFileSync(plist, "utf8")).toContain("<string>Agent Orchestrator</string>");
+		for (const locale of ["en", "en_GB", "ja"]) {
+			expect(readFileSync(join(resources, `${locale}.lproj`, "InfoPlist.strings"))).toEqual(label);
+		}
+	});
 });
 
 // Minimal synthetic Mach-O headers (thin little-endian + fat big-endian), the
