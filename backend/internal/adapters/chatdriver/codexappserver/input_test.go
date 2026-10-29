@@ -20,7 +20,7 @@ const inputParams = `{"threadId":"thread-1","turnId":"turn-1","itemId":"tool-1",
 
 func TestUserInputProtocolRoundTrip(t *testing.T) {
 	d, srv := newTestDriver(t)
-	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestUserInputProtocolRoundTrip(t *testing.T) {
 
 func TestUserInputOtherAndFreeText(t *testing.T) {
 	d, srv := newTestDriver(t)
-	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestUserInputRefusesMalformedAndSecretRequests(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			d, srv := newTestDriver(t)
-			conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+			conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,7 +183,7 @@ func TestUserInputLifecycle(t *testing.T) {
 	for _, mode := range []string{"cancel", "decline", "provider", "timeout", "close", "concurrent"} {
 		t.Run(mode, func(t *testing.T) {
 			d, srv := newTestDriver(t)
-			conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+			conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -283,7 +283,7 @@ func TestUserInputRequestContextCancellation(t *testing.T) {
 
 func TestUserInputConcurrentRequestsRemainIndependent(t *testing.T) {
 	d, srv := newTestDriver(t)
-	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: "/tmp/ws"})
+	conv, err := d.Start(context.Background(), ports.ChatStartConfig{WorkspacePath: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
