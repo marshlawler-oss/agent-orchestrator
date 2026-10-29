@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MachOParseError } from "./makers/macho-archs";
@@ -30,6 +30,21 @@ vi.mock("./scripts/build-mac-dmg.mjs", async (importOriginal) => {
 });
 
 import config, { extraResourcesForPlatform, macSignOptionsForFile } from "./forge.config";
+import packageJSON from "./package.json";
+
+describe("desktop display name", () => {
+	it("uses Orchestrator while preserving the installed bundle and executable", () => {
+		expect(packageJSON.productName).toBe("Orchestrator");
+		expect(config.packagerConfig).toMatchObject({
+			name: "Agent Orchestrator",
+			executableName: "agent-orchestrator",
+			appBundleId: "dev.agent-orchestrator.desktop",
+		});
+		expect(extraResourcesForPlatform("darwin")).toContain("assets/mac/en.lproj");
+		expect(readFileSync(join(process.cwd(), "assets/mac/en.lproj/InfoPlist.strings"), "utf8"))
+			.toContain('CFBundleDisplayName = "Orchestrator";');
+	});
+});
 
 // Minimal synthetic Mach-O headers (thin little-endian + fat big-endian), the
 // two on-disk layouts the signing selector must tell apart. Full parser

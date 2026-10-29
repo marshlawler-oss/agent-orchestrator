@@ -70,7 +70,7 @@ export function extraResourcesForPlatform(platform: NodeJS.Platform): string[] {
 		"browser-extension",
 		"agent-browser",
 		"resources/acp-runtime",
-		...(platform === "darwin" ? ["update-helper", "wake-helper", "cloudflared"] : []),
+		...(platform === "darwin" ? ["update-helper", "wake-helper", "cloudflared", "assets/mac/en.lproj"] : []),
 		...(platform === "darwin" || platform === "linux" ? ["tmux"] : []),
 		"assets/icon.png",
 		"assets/icon.ico",
@@ -131,6 +131,7 @@ const config: ForgeConfig = {
 		appBundleId: "dev.agent-orchestrator.desktop",
 		name: "Agent Orchestrator",
 		executableName: EXECUTABLE_NAME,
+		extendInfo: { LSHasLocalizedDisplayName: true, CFBundleDevelopmentRegion: "en" },
 		protocols: [AUTH_PROTOCOL],
 		appCategoryType: "public.app-category.developer-tools",
 		// App icon. electron-packager appends the per-platform extension
@@ -138,6 +139,17 @@ const config: ForgeConfig = {
 		// deb/rpm makers below, and the runtime window icon from src/main.ts.
 		icon: "assets/icon",
 		extraResource: extraResourcesForPlatform(process.platform),
+		afterCopyExtraResources: [(buildPath, _version, platform, _arch, callback) => {
+			if (platform !== "darwin") return callback();
+			// Finder uses the localized label only when the base display name
+			// matches the bundle filename. Packager defaults it to the executable.
+			// Run before signing so both the plist and localized name are sealed.
+			const result = spawnSync("plutil", [
+				"-replace", "CFBundleDisplayName", "-string", "Agent Orchestrator",
+				path.join(buildPath, "Agent Orchestrator.app", "Contents", "Info.plist"),
+			], { encoding: "utf8" });
+			callback(result.error ?? (result.status !== 0 ? new Error(`Setting macOS display name failed: ${result.stderr}`) : undefined));
+		}],
 		// Notarization. Two paths:
 		//  - CI: an App Store Connect API key. APPLE_API_KEY is a PATH to the .p8
 		//    (the workflow decodes APPLE_API_KEY_BASE64 to a temp file), plus the
@@ -304,7 +316,7 @@ const config: ForgeConfig = {
 				appId: "dev.agent-orchestrator.desktop",
 				// The name shown in the installer, the updater, the shortcuts, and
 				// Windows Apps. It matches the app's display name in main.ts.
-				productName: "Orchestrator.inc",
+				productName: "Orchestrator",
 				// Match the packaged binary name so the Start menu shortcut targets
 				// the real "agent-orchestrator.exe" (not "Agent Orchestrator.exe").
 				executableName: EXECUTABLE_NAME,
@@ -337,7 +349,7 @@ const config: ForgeConfig = {
 		new MakerAppImage(
 			{
 				appId: "dev.agent-orchestrator.desktop",
-				productName: "Agent Orchestrator",
+				productName: "Orchestrator",
 				icon: "assets/icon.png",
 				protocols: [AUTH_PROTOCOL],
 			},
