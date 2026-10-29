@@ -3666,5 +3666,18 @@
 	"share.people.working": "工作中",
 	"share.people.waiting": "排队中",
 	"share.people.idle": "空闲",
-	"board.shared.working": "{{name}} 工作中"
+	"board.shared.working": "{{name}} 工作中",
+	"onboarding.attribution.title": "你是从哪里了解到 Orchestrator 的？",
+	"onboarding.attribution.skip": "跳过",
+	"onboarding.attribution.channel.x_twitter": "X (Twitter)",
+	"onboarding.attribution.channel.youtube": "YouTube",
+	"onboarding.attribution.channel.friend_colleague": "朋友或同事",
+	"onboarding.attribution.channel.github": "GitHub",
+	"onboarding.attribution.channel.hacker_news": "Hacker News",
+	"onboarding.attribution.channel.reddit": "Reddit",
+	"onboarding.attribution.channel.search": "搜索引擎",
+	"onboarding.attribution.channel.ai_assistant": "AI 助手",
+	"onboarding.attribution.channel.newsletter_blog": "新闻通讯或博客",
+	"onboarding.attribution.channel.conference_event": "会议或活动",
+	"onboarding.attribution.channel.other": "其他"
 }
