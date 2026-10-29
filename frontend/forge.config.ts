@@ -358,6 +358,7 @@ const config: ForgeConfig = {
 			{
 				appId: "dev.agent-orchestrator.desktop",
 				productName: "Orchestrator",
+				appImage: { artifactName: "Agent Orchestrator-${version}.${ext}" },
 				icon: "assets/icon.png",
 				protocols: [AUTH_PROTOCOL],
 			},

@@ -246,11 +246,11 @@ process.stderr.on("error", ignoreStdStreamError);
 // The name shown in window titles, the menu bar, the dock, and the About panel.
 // Packaged bundle and installer filenames are unchanged.
 const APP_DISPLAY_NAME = "Orchestrator";
+const APP_STORAGE_NAME = "Orchestrator.inc";
 
-// Must run before app ready so the About panel and default-menu role labels use it.
-// Unpackaged runs get a distinct name so the dev window, dock menu, and About
-// panel never impersonate the installed app (#3642).
-app.setName(app.isPackaged ? APP_DISPLAY_NAME : `${APP_DISPLAY_NAME} (dev)`);
+// Electron captures this name for macOS Keychain and Linux keyring encryption
+// before ready. Preserve it so saved logins and cookies remain readable.
+app.setName(app.isPackaged ? APP_STORAGE_NAME : `${APP_STORAGE_NAME} (dev)`);
 
 // An unsigned dev Electron is a new app to macOS whenever its binary changes, so Chromium's
 // keychain-held cookie key prompted on start. Dev runs use the stand-in key; packaged keep the keychain.
@@ -3543,6 +3543,8 @@ async function writeAppStateOnLaunch(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+	// Encryption is configured; visible menu and About labels can use the brand.
+	app.setName(app.isPackaged ? APP_DISPLAY_NAME : `${APP_DISPLAY_NAME} (dev)`);
 	powerMonitor.on("suspend", () => recordUpdateDiagnostic("power-suspend"));
 	powerMonitor.on("resume", () => recordUpdateDiagnostic("power-resume"));
 	if (app.isPackaged) {
